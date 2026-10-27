@@ -1,0 +1,7 @@
+{
+  "name": "coin-context-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {"build": "node build.mjs", "check": "node --check app.js", "test": "node --test tests/state.test.cjs"},
+  "engines": {"node": ">=20"}
+}

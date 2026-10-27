@@ -1,0 +1,23 @@
+.venv/
+.env
+.env.*
+!.env.example
+.local/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.sqlite3-*
+*-firebase-adminsdk-*.json
+*service-account*.json
+credentials/
+frontend/dist/
+.vercel/
+node_modules/
+tmp/
+
+# Local reference material and development notes, not mission deliverables.
+/m1-2 미션.pdf
+/m1-2평가지.png
+/docs/superpowers/
+/docs/screenshots/codyssey-auth-check.jpg

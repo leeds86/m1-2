@@ -1,0 +1,1 @@
+"""Coin data assistant API."""
