@@ -189,6 +189,45 @@ def test_sqlite_data_survives_new_instance(tmp_path):
     assert two.get("data", "key")["value"] == 100
 
 
+def test_reimport_skips_existing_records_without_write_requests(client, monkeypatch):
+    assert client.post("/api/data", json=candle()).status_code == 201
+    store = client.app.state.store
+    original_create = store.create
+
+    def create_only_new(collection, doc_id, payload):
+        assert doc_id != "KRW-BTC_2025-01-01", "Existing candles must not incur a write RPC"
+        return original_create(collection, doc_id, payload)
+
+    monkeypatch.setattr(store, "create", create_only_new)
+    client.app.state.market_client = SimpleNamespace(candles=lambda market: [candle(), candle("2025-01-02")])
+    response = client.post("/api/data/import", json={"market": "KRW-BTC"})
+    assert response.status_code == 200
+    assert response.json()["imported"] == 1
+    assert response.json()["skipped"] == 1
+    assert response.json()["count"] == 2
+    assert store.get("data", "KRW-BTC_2025-01-01")["memo"] == "검증"
+
+
+def test_new_import_does_not_wait_for_each_network_write_serially(client, monkeypatch):
+    from threading import Barrier
+
+    client.get("/api/data")
+    store = client.app.state.store
+    original_create = store.create
+    both_started = Barrier(2)
+
+    def delayed_create(collection, doc_id, payload):
+        both_started.wait(timeout=3)
+        return original_create(collection, doc_id, payload)
+
+    monkeypatch.setattr(store, "create", delayed_create)
+    client.app.state.market_client = SimpleNamespace(candles=lambda market: [candle(), candle("2025-01-02")])
+    response = client.post("/api/data/import", json={"market": "KRW-BTC"})
+    assert response.status_code == 200
+    assert response.json()["imported"] == 2
+    assert response.json()["count"] == 2
+
+
 def test_sqlite_connections_close_after_transaction(tmp_path):
     store = SQLiteStore(str(tmp_path / "closed.db"))
     with store.connection() as connection:

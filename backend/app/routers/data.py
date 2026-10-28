@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Request, Response
@@ -41,15 +42,25 @@ def create_data(payload: CandleInput, store=Depends(get_store)):
 def import_data(payload: ImportInput, request: Request, store=Depends(get_store)):
     request.app.state.limiter.check("import:" + request.client.host, 4)
     rows = request.app.state.market_client.candles(payload.market)
-    imported = skipped = 0
-    for row in rows:
+    existing = {row["id"] for row in store.list("data", "market", payload.market)}
+    pending = [row for row in rows if f"{row['market']}_{row['date']}" not in existing]
+
+    def save_new(row):
         try:
             create_record(store, row, "upbit")
-            imported += 1
+            return 1
         except AppError as exc:
             if exc.status != 409:
                 raise
-            skipped += 1
+            # Another request may create a candle after the initial read.
+            return 0
+
+    imported = 0
+    if pending:
+        # Keep network latency bounded without issuing writes for known records.
+        with ThreadPoolExecutor(max_workers=8) as workers:
+            imported = sum(workers.map(save_new, pending))
+    skipped = len(rows) - imported
     count = len(store.list("data", "market", payload.market))
     return dict(market=payload.market, imported=imported, skipped=skipped, count=count,
                 message=f"{imported}개 추가, 기존 {skipped}개 보존. 완료된 UTC 일봉 기준입니다.")
